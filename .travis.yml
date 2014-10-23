@@ -1,5 +1,5 @@
 before_script:
-  - git clone -b extended-revoke https://github.com/openca/libpki.git
+  - git clone -b extended-revoke https://github.com/vtsingaras/libpki.git
   - cd libpki && ./configure && make && sudo make install && cd -
 #  - cp /usr/lib64/libpki* /usr
 language: c
