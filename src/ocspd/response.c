@@ -5,7 +5,7 @@
  *     OpenCA License software
  * ============================================================
  */
- 
+
 #include "general.h"
 
 #include <stdbool.h>
@@ -39,7 +39,7 @@ int sign_ocsp_response(PKI_X509_OCSP_RESP *resp, OCSPD_CONFIG *conf, PKI_X509_CE
 
 	// Input Checks
 	if (!resp || !conf) return PKI_ERR;
-	
+
 	// Checks the internal value
 	r = PKI_X509_get_value(resp);
 	if (!r || !r->resp) return PKI_ERR;
@@ -362,7 +362,7 @@ PKI_X509_OCSP_RESP *make_ocsp_response(PKI_X509_OCSP_REQ *req, OCSPD_CONFIG *con
 					if (resp) PKI_X509_OCSP_RESP_free(resp);
 					resp = make_error_response(PKI_X509_OCSP_RESP_STATUS_INTERNALERROR);
 					if (conf->debug)
-						PKI_log_debug("sending INTERNAL ERROR (%s)", 
+						PKI_log_debug("sending INTERNAL ERROR (%s)",
 							get_crl_status_info(ca->crl_status));
 					goto end;
 					break;
@@ -375,7 +375,7 @@ PKI_X509_OCSP_RESP *make_ocsp_response(PKI_X509_OCSP_REQ *req, OCSPD_CONFIG *con
 					if (resp) PKI_X509_OCSP_RESP_free(resp);
 					resp = make_error_response(PKI_X509_OCSP_RESP_STATUS_TRYLATER);
 					if (conf->debug)
-						PKI_log_debug("sending TRYLATER (%s)", 
+						PKI_log_debug("sending TRYLATER (%s)",
 							get_crl_status_info(ca->crl_status));
 					goto end;
 					break;
@@ -386,7 +386,7 @@ PKI_X509_OCSP_RESP *make_ocsp_response(PKI_X509_OCSP_REQ *req, OCSPD_CONFIG *con
 					PKI_X509_OCSP_RESP_add(resp, cid, PKI_OCSP_CERTSTATUS_UNKNOWN,
 						NULL, NULL, nextupd, CRL_REASON_UNSPECIFIED, NULL);
 					if (conf->debug)
-						PKI_log_debug("setting CERTSTATUS UNKNOWN for serial %s (%s)", 
+						PKI_log_debug("setting CERTSTATUS UNKNOWN for serial %s (%s)",
 							parsedSerial, get_crl_status_info(ca->crl_status));
 					continue;
 			}
@@ -402,17 +402,17 @@ PKI_X509_OCSP_RESP *make_ocsp_response(PKI_X509_OCSP_REQ *req, OCSPD_CONFIG *con
 
 			continue;
 		}
-		
+
 		// Here we check if the request is about a certificate that we know about, else return EXTENDED REVOCATION according to CA/B Forum Baseline Requirements v1.1.9 and RFC6960 Section 2.2
 		if (ca->serials_path != NULL)
-		{	
+		{
 			bool serial_found = false;
 			if( difftime(time(NULL), ca->serials_lastupdate) > ca->serials_timeout)
 			{
 				pthread_mutex_lock(&serials_mutex);
 				//Check if the serials where updated while waiting for lock
 				if ( difftime(time(NULL), ca->serials_lastupdate) > ca->serials_timeout)
-				{	
+				{
 					pthread_mutex_unlock(&serials_mutex);
 					goto skipserialsreload;
 				}
@@ -488,28 +488,20 @@ skipserialsreload:;
 			for(i = 0; i < SKM_sk_num(PKI_INTEGER, ca->serials_list); i++)
 			{
 				if(!PKI_INTEGER_cmp(SKM_sk_value(PKI_INTEGER, ca->serials_list,i), serial))
-				{	
+				{
 					serial_found = true;
 					break;
 				}
 				else
 					serial_found = false;
 			}
-			
+
 			if ( !serial_found )
 			{
-				char *unknownSerial = PKI_INTEGER_get_parsed(serial); 
-				//return extended revocation as per RFC6960
-				PKI_TIME *extended_revocation_time = PKI_TIME_new(0);
-				extended_revocation_time = PKI_TIME_set(extended_revocation_time, (time_t)0);
-				if (extended_revocation_time == NULL)
-				{
-					PKI_X509_OCSP_RESP_free(resp);
-					resp = make_error_response(PKI_X509_OCSP_RESP_STATUS_INTERNALERROR);
-					PKI_log_err("Error setting the revocation time.");
-				}
-				else if ((PKI_X509_OCSP_RESP_add(resp, cid, PKI_OCSP_CERTSTATUS_REVOKED,
-						extended_revocation_time, thisupd, nextupd, CRL_REASON_CERTIFICATE_HOLD, NULL )) == PKI_ERR)
+				char *unknownSerial = PKI_INTEGER_get_parsed(serial);
+				//return Unknown
+				if (PKI_ERR == (PKI_X509_OCSP_RESP_add(resp, cid, PKI_OCSP_CERTSTATUS_UNKNOWN,
+						NULL, thisupd, nextupd, CRL_REASON_UNSPECIFIED, NULL )))
 				{
 					PKI_X509_OCSP_RESP_free(resp);
 					resp = make_error_response(PKI_X509_OCSP_RESP_STATUS_INTERNALERROR);
@@ -523,7 +515,7 @@ skipserialsreload:;
 				}
 				else
 				{
-					PKI_log(PKI_LOG_ALWAYS, "SECURITY:: Received request for UNKNOWN certificate serial for CA [%s]!", ca->ca_id);	
+					PKI_log(PKI_LOG_ALWAYS, "SECURITY:: Received request for UNKNOWN certificate serial for CA [%s]!", ca->ca_id);
 				}
 				continue;
 			}
@@ -581,7 +573,7 @@ skipserialsreload:;
 				PKI_log(PKI_LOG_INFO, "%s [serial %s]",
 						statusInfo[OCSPD_INFO_NON_RECOGNIZED_CA], parsedSerial);
 
-			PKI_X509_OCSP_RESP_add ( resp, cid, PKI_OCSP_CERTSTATUS_UNKNOWN, 
+			PKI_X509_OCSP_RESP_add ( resp, cid, PKI_OCSP_CERTSTATUS_UNKNOWN,
 				NULL, thisupd, nextupd, CRL_REASON_UNSPECIFIED, NULL );
 		}
 		else
@@ -639,7 +631,7 @@ end:
 	return resp;
 }
 
-int ocspd_resp_send_socket(int connfd, PKI_X509_OCSP_RESP *r, 
+int ocspd_resp_send_socket(int connfd, PKI_X509_OCSP_RESP *r,
 						OCSPD_CONFIG *conf) {
 
 	PKI_TIME *date = NULL;
@@ -740,7 +732,7 @@ int ocspd_resp_send_socket(int connfd, PKI_X509_OCSP_RESP *r,
 	// Flushes the buffers
 	fflush(NULL);
 
-	if (conf->debug) 
+	if (conf->debug)
 	{
 		PKI_log_debug("OCSP Response Bytes = %d, HTTP Header Bytes = %d", mem->size, buf_size);
 
@@ -779,7 +771,7 @@ CA_LIST_ENTRY *OCSPD_CA_ENTRY_find(OCSPD_CONFIG *conf, OCSP_CERTID *cid)
 
 	b = cid;
 
-	if (conf == NULL || conf->ca_list == NULL ) 
+	if (conf == NULL || conf->ca_list == NULL )
 	{
 		PKI_log_err("ERROR: missing conf and/or ca_list");
 		return NULL;
@@ -795,14 +787,14 @@ CA_LIST_ENTRY *OCSPD_CA_ENTRY_find(OCSPD_CONFIG *conf, OCSP_CERTID *cid)
 		/* Check for hashes */
 		if((ret = ASN1_OCTET_STRING_cmp(tmp->nameHash, b->issuerNameHash)) != 0 )
 		{
-			if (conf->debug) 
+			if (conf->debug)
 			{
-				PKI_log_debug("CRL::CA [%s] nameHash mismatch (%d)", 
+				PKI_log_debug("CRL::CA [%s] nameHash mismatch (%d)",
 					ca->ca_id, ret);
 			}
 			continue;
 		}
-		else if( conf->debug ) 
+		else if( conf->debug )
 		{
 			PKI_log_debug("CRL::CA [%s] nameHash OK", ca->ca_id);
 		}
@@ -817,7 +809,7 @@ CA_LIST_ENTRY *OCSPD_CA_ENTRY_find(OCSPD_CONFIG *conf, OCSP_CERTID *cid)
 			continue;
 
 		}
-		else if (conf->debug) 
+		else if (conf->debug)
 		{
 			PKI_log_debug("CRL::CA [%s] issuerKeyHash OK", ca->ca_id);
 		}
@@ -842,7 +834,7 @@ X509_REVOKED *OCSPD_REVOKED_find (CA_LIST_ENTRY *ca, ASN1_INTEGER *serial) {
 
 	/* If no entries are in the list, return directly */
 	if( !(ca) || !(ca->crl) || !(ca->crl_list)) return (r);
- 
+
 	/* Set the end point to the last one */
 	end = sk_X509_REVOKED_num(ca->crl_list) - 1;
 	if( end < 0 ) return (r);
@@ -879,4 +871,3 @@ X509_REVOKED *OCSPD_REVOKED_find (CA_LIST_ENTRY *ca, ASN1_INTEGER *serial) {
 		return(NULL);
 
 }
-
