@@ -275,6 +275,7 @@ void handle_sighup ( int i ) {
 
 	PKI_log( PKI_LOG_WARNING, "SIGHUP::Reloading CRLs, Master!");
 	ocspd_reload_crls( ocspd_conf );
+	ocspd_reload_serials( ocspd_conf );
 	return;
 }
 

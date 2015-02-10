@@ -579,6 +579,18 @@ int OCSPD_build_ca_list ( OCSPD_CONFIG *handler,
 		{
 			ca->serials_timeout = 5 * 60;
 		}
+		ca->serials_lastupdate = 0;
+
+		if(ca->serials_path != NULL){
+			if(ocspd_load_ca_serials ( ca, handler ) == PKI_ERR )
+	                {
+        	                PKI_log_err ( "Can not get Serials for %s", ca->ca_id);
+                	        CA_LIST_ENTRY_free ( ca );
+
+                        	continue;
+	                }
+		}
+
 		/* If the Server has a Token to be used with this CA, let's
                    load it */
 		if((tmp_s = PKI_CONFIG_get_value ( cnf, "/caConfig/serverToken" )) == NULL)

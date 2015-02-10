@@ -23,6 +23,113 @@ extern OCSPD_CONFIG * ocspd_conf;
 // extern pthread_rwlock_t crl_lock;
 // extern pthread_cond_t crl_cond;
 
+int ocspd_load_ca_serials ( CA_LIST_ENTRY *a, OCSPD_CONFIG *conf ) {
+	if(!a) return(-1);
+
+	if( conf->debug )
+		PKI_log_debug( "ACQUIRING WRITE LOCK -- BEGIN Serials RELOAD");
+
+	PKI_RWLOCK_write_lock ( &conf->crl_lock );
+	
+	if( conf->debug )
+		PKI_log_debug( "INFO::LOCK ACQUIRED (Serials RELOAD)");
+	
+	if( a->serials_list != NULL) {
+		SKM_sk_pop_free(PKI_INTEGER, a->serials_list, PKI_INTEGER_free);
+		a->serials_list = NULL;
+	}
+
+	if ( a->serials_path == NULL ) {
+		PKI_log ( PKI_LOG_ALWAYS, "Missing Serials path for CA %s", a->ca_id );
+		PKI_RWLOCK_release_write ( &conf->crl_lock );
+		return(-1);
+	}
+
+	a->serials_list = (STACK_OF(PKI_INTEGER)*)SKM_sk_new(PKI_INTEGER, PKI_INTEGER_cmp);
+
+	FILE *fp=fopen(a->serials_path,"r");
+	#define SERIALS_LINE_BUF 512
+	char *db_line = (char *) malloc (SERIALS_LINE_BUF);
+	while(fgets(db_line, SERIALS_LINE_BUF, fp))
+	{
+		char *token, *txt_serial;
+		token = strtok(db_line, "\t");
+		if (!strcmp(token, "R"))
+		{
+			strtok(NULL,"\t"); //expiration datetime
+			strtok(NULL,"\t"); //revocation datetime
+			txt_serial = strtok(NULL,"\t"); //serial
+		}
+		else
+		{
+			strtok(NULL,"\t"); //expiration datetime
+			txt_serial = strtok(NULL,"\t"); //serial
+		}
+		if (txt_serial == NULL)
+		{
+			PKI_log_err("Unable to get serial from index.txt");
+			fclose(fp);
+			PKI_RWLOCK_release_write ( &conf->crl_lock );
+			return(-1);
+		}
+		long long unsigned int hex_serial;
+		errno = 0;
+		hex_serial = strtoull(txt_serial,NULL,16);
+		if (errno == ERANGE || hex_serial == 0L)
+		{
+			PKI_log_err("Unable to convert serial");
+			fclose(fp);
+			PKI_RWLOCK_release_write ( &conf->crl_lock );
+			return(-1);
+		}
+		PKI_INTEGER* asn1_serial = PKI_INTEGER_new(hex_serial);
+		if (asn1_serial)
+			SKM_sk_push(PKI_INTEGER, a->serials_list, asn1_serial);
+	}
+	if (!feof(fp))
+	{
+		PKI_log_err("Unable to parse index.txt");
+		fclose(fp);
+		PKI_RWLOCK_release_write ( &conf->crl_lock );
+		return(-1);
+	}
+	
+	fclose(fp);
+	a->serials_lastupdate = time(NULL);
+	PKI_RWLOCK_release_write ( &conf->crl_lock );
+	return(1);
+}
+
+int ocspd_reload_serials ( OCSPD_CONFIG *conf ) {
+	int i, err;
+
+	CA_LIST_ENTRY *a = NULL;
+
+	if( conf->verbose )
+		PKI_log( PKI_LOG_INFO, "INFO::Serials Reload %ld CAs",
+			PKI_STACK_elements (conf->ca_list));
+
+	err = 0;
+	for( i=0; i < PKI_STACK_elements (conf->ca_list); i++ ) {
+		a = PKI_STACK_get_num ( conf->ca_list, i );
+
+		if( conf->verbose )
+			PKI_log(PKI_LOG_INFO, "INFO::Reloading serials for CA [%s]",
+							a->ca_id );
+
+		if( ocspd_load_ca_serials(a, conf) < 0 ) {
+			PKI_log_err("Reload serials for CA [%s]", a->ca_id );
+			err++;
+			continue;
+		}
+	}
+
+	PKI_log(PKI_LOG_ALWAYS, "Serials Reloaded (%d ok, %d err)",
+		i - err, err );
+
+	return(1);
+}
+
 int ocspd_load_ca_crl ( CA_LIST_ENTRY *a, OCSPD_CONFIG *conf ) {
 
 	if(!a) return(-1);
@@ -361,6 +468,6 @@ void auto_crl_check ( int sig ) {
 void force_crl_reload ( int sig ) {
 	PKI_log( LOG_INFO, "Forced CRL reloading detected");
 	ocspd_reload_crls ( ocspd_conf );
-
+	ocspd_reload_serials ( ocspd_conf );
 	return;
 };
